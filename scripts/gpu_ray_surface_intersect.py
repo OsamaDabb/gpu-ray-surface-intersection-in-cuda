@@ -216,7 +216,8 @@ class PyGpuRSI(object):
                                     u * vertices[triangles[f,1],ax] + \
                                     v * vertices[triangles[f,2],ax]
                 '''
-            return intersecting_rays, distances, hit_triangles, hit_points
+            # ADDED return t for convenience
+            return intersecting_rays, distances, hit_triangles, hit_points, t
         else: #'intercept_count'
             return np.fromfile('results_i32', dtype=np.int32)
 
