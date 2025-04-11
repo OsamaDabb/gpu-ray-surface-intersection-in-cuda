@@ -25,6 +25,7 @@ class PyGpuRSI(object):
         self.gpu_bin_target = cfg.get('gpu_bin_target', 'gpu_ray_surface_intersect')
         self.keep_cuda_binary = cfg.get('keep_cuda_binary', False)
         self.nvcc_compile = 'nvcc'
+        self.first_instance = True
         #operating mode
         #  'boolean' (default) returns {0,1} outcome for ray-surface intersection
         #  'barycentric' returns intersecting rays, intersecting triangles f (-1
@@ -99,10 +100,13 @@ class PyGpuRSI(object):
         self.translate_data(vertices, rayfrom, rayto)
 
         #convert user-supplied numpy arrays into binaries for CUDA program
-        with open('input/vertices_f32', 'wb') as f:
-            np.array(self.vertices.flatten(),'float32').tofile(f)
-        with open('input/triangles_i32', 'wb') as f:
-            np.array(triangles.flatten(),'int32').tofile(f)
+        # only write mesh data first time
+        if self.first_instance==True:
+            self.first_instance=False
+            with open('input/vertices_f32', 'wb') as f:
+                np.array(self.vertices.flatten(),'float32').tofile(f)
+            with open('input/triangles_i32', 'wb') as f:
+                np.array(triangles.flatten(),'int32').tofile(f)
         if rayfrom is not None:
             with open('input/rayFrom_f32', 'wb') as f:
                 np.array(self.rayfrom.flatten(),'float32').tofile(f)

@@ -253,9 +253,7 @@ int main(int argc, char *argv[])
     HANDLE_ERROR(cudaMalloc(&d_morton, sz_morton));
     HANDLE_ERROR(cudaMalloc(&d_sortedTriangleIDs, sz_sortedIDs));
     HANDLE_ERROR(cudaMalloc(&d_hitIDs, sz_hitIDs));
-    if (interceptsCount) {
-        HANDLE_ERROR(cudaMalloc(&d_interceptDists, sz_interceptDists));
-    }
+
     HANDLE_ERROR(cudaMemcpy(d_morton, h_morton.data(), sz_morton, cudaMemcpyHostToDevice));
     HANDLE_ERROR(cudaMemcpy(d_sortedTriangleIDs, h_sortedTriangleIDs.data(), sz_sortedIDs, cudaMemcpyHostToDevice));
     std::vector<uint64_t>().swap(h_morton);
@@ -270,6 +268,33 @@ int main(int argc, char *argv[])
                                                d_morton, nTriangles);
     //HANDLE_ERROR(cudaDeviceSynchronize());
     CUDA_SYNCHRO_CHECK();
+
+    // DEBUGGING 
+
+    printf("blockX = %d\n", blockX);
+    printf("gridXr = %d\n", gridXr);
+    printf("gridXt = %d\n", gridXt);
+    printf("gridXLambda = %d\n", gridXLambda);
+
+    printf("sz_vertices = %d\n", sz_vertices);
+    printf("sz_triangles = %d\n", sz_triangles);
+    printf("sz_rays = %d\n", sz_rays);
+    printf("sz_rbox = %d\n", sz_rbox);
+    printf("sz_id = %d\n", sz_id);
+    printf("sz_bary = %d\n", sz_bary);
+    printf("sz_morton = %d\n", sz_morton);
+    printf("sz_sortedIDs = %d\n", sz_sortedIDs);
+    printf("sz_hitIDs = %d\n", sz_hitIDs);
+    printf("sz_interceptDists = %d\n", sz_interceptDists);
+
+    // Also print the first 3 elements of minval, maxval, half_delta, inv_delta
+    printf("minval = [%f, %f, %f]\n", minval[0], minval[1], minval[2]);
+    printf("maxval = [%f, %f, %f]\n", maxval[0], maxval[1], maxval[2]);
+    printf("half_delta = [%f, %f, %f]\n", half_delta[0], half_delta[1], half_delta[2]);
+    printf("inv_delta = [%f, %f, %f]\n", inv_delta[0], inv_delta[1], inv_delta[2]);
+
+
+    // END DEBUGGING
 
     if (barycentric) {
         bvhIntersectionKernel<<<gridXLambda, blockX>>>(
