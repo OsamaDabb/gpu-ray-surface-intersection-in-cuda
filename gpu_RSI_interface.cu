@@ -185,7 +185,7 @@ class RSI {
         // Constructor to initialize consts
         RSI()
             : checkEnabled(true), largePosVal(2.5e8f), barycentric(true),
-            quietMode(false),
+            quietMode(true),
             d_vertices(nullptr),d_triangles(nullptr),
             d_rayFrom(nullptr),d_rayTo(nullptr),
             d_rayBox(nullptr),
@@ -388,6 +388,8 @@ class RSI {
         HANDLE_ERROR(cudaMemcpy(h_baryT.data(), d_baryT, sz_bary, cudaMemcpyDeviceToHost));
         HANDLE_ERROR(cudaMemcpy(h_baryU.data(), d_baryU, sz_bary, cudaMemcpyDeviceToHost));
         HANDLE_ERROR(cudaMemcpy(h_baryV.data(), d_baryV, sz_bary, cudaMemcpyDeviceToHost));
+
+        // printf("Detected triangle ID = %d\n", h_intersectTriangle[0]);
     
     }
 
@@ -411,30 +413,63 @@ class RSI {
     }
 };
 
-int main(){
-    RSI* rsi = new RSI();
-    // Define actual arrays (not pointers)
-    float vertices_array[9] = {0.0, 0.0, 0.0, 0, 0, 1, 0,1,0};
-    int triangles_array[9] = {0, 1, 2};
+// int main(){
+//     RSI* rsi = new RSI();
 
-    // Then assign pointers to point to the arrays
-    float* vertices = vertices_array;
-    int* triangles = triangles_array;
+//     // 9 vertices (3 triangles, 3 vertices each)
+//     float vertices_array[27] = {
+//         // Triangle 0
+//         0.0f, 0.0f, 0.0f,   // Vertex 0
+//         1.0f, 0.0f, 0.0f,   // Vertex 1
+//         0.0f, 1.0f, 0.0f,   // Vertex 2
 
-    // Other integers
-    int num_vertices = 3;    // 3 vertices (each vertex = 3 floats (x,y,z))
-    int num_triangles = 1;   // 1 triangle
-    int num_rays = 1;        // 1 ray
+//         // Triangle 1
+//         2.0f, 0.0f, 0.0f,   // Vertex 3
+//         3.0f, 0.0f, 0.0f,   // Vertex 4
+//         2.0f, 1.0f, 0.0f,   // Vertex 5
 
-    float rayFrom_array[3] = { 1.0f, 0.5f, 0.5f };
-    float rayTo_array[3]   = { -1.0f, 0.5f, 0.5f };
+//         // Triangle 2
+//         4.0f, 0.0f, 0.0f,   // Vertex 6
+//         5.0f, 0.0f, 0.0f,   // Vertex 7
+//         4.0f, 1.0f, 0.0f    // Vertex 8
+//     };
 
-    rsi->setup(vertices, triangles, num_vertices, num_triangles, num_rays);
+//     int triangles_array[9] = {
+//         0, 1, 2,  // Triangle 0
+//         3, 4, 5,  // Triangle 1
+//         6, 7, 8   // Triangle 2
+//     };
 
-    rsi->detect(rayFrom_array, rayTo_array);
+//     // Pointers
+//     float* vertices = vertices_array;
+//     int* triangles = triangles_array;
 
-    rsi->destroy();
-}
+//     // Number of primitives
+//     int num_vertices = 9;    // 9 vertices
+//     int num_triangles = 3;   // 3 triangles
+//     int num_rays = 1;        // 1 ray
+
+//     // Define a ray that will hit the first triangle
+//     float rayFrom_array[3] = { 0.5f, 0.5f, 1.0f };   // Above Triangle 0
+//     float rayTo_array[3]   = { 0.5f, 0.5f, -1.0f };  // Going down through Triangle 0
+
+//     // Setup
+//     rsi->setup(vertices, triangles, num_vertices, num_triangles, num_rays);
+
+//     // Detect
+//     rsi->detect(rayFrom_array, rayTo_array);
+
+//     // Optionally you might want to inspect rsi->h_intersectTriangle, rsi->h_baryT here
+//     // Example:
+//     printf("Intersected Triangle ID: %d\n", rsi->h_intersectTriangle[0]);
+//     printf("Barycentric T: %f\n", rsi->h_baryT[0]);
+
+//     // Destroy
+//     rsi->destroy();
+
+//     delete rsi;
+//     return 0;
+// }
 
 
 // Create RSI object and call setup
@@ -448,6 +483,9 @@ extern "C" void* setup_RSI(float* vertices, int* triangles, int num_vertices, in
 extern "C" void detect_RSI(void* rsi_obj, float* rayFrom, float* rayTo, int** out_intersectTriangle, float** out_baryT) {
     RSI* rsi = static_cast<RSI*>(rsi_obj);
     rsi->detect(rayFrom, rayTo);
+
+    // printf("rayFrom = (%f, %f, %f)\n", rayFrom[0], rayFrom[1], rayFrom[2]);
+    // printf("rayTo = (%f, %f, %f)\n", rayTo[0], rayTo[1], rayTo[2]);
     
     *out_intersectTriangle = rsi->h_intersectTriangle.data();
     *out_baryT = rsi->h_baryT.data();
