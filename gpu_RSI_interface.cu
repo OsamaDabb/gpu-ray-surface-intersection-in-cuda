@@ -256,8 +256,63 @@ class RSI {
                 
             HANDLE_ERROR(cudaMemcpy(d_vertices, h_vertices.data(), sz_vertices, cudaMemcpyHostToDevice));
             HANDLE_ERROR(cudaMemcpy(d_triangles, h_triangles.data(), sz_triangles, cudaMemcpyHostToDevice));
-        
-    }
+
+            //grid partitions
+            blockX = 1024,
+            gridXr = (int)ceil((float)nRays / blockX),
+            gridXt = (int)ceil((float)nTriangles / blockX),
+            gridXLambda = 16; //N_{grids}
+            if (! quietMode) {
+                cout << blockX << " threads/block, grids: {triangles: "
+                    << gridXt << ", rays: " << gridXLambda << "}" << endl;
+            }
+
+            //order triangles using Morton code
+            //- normalise surface vertices to canvas coords
+            getMinMaxExtentOfSurface<float>(h_vertices, minval, maxval, half_delta,
+                inv_delta, nVertices, quietMode);
+            //- convert centroid of triangles to morton code
+            createMortonCode<float, uint64_t>(h_vertices, h_triangles,
+                        minval, half_delta, inv_delta,
+                        h_morton, nTriangles);
+            //- sort before constructing binary radix tree
+            sortMortonCode<uint64_t>(h_morton, h_sortedTriangleIDs);
+            if (!quietMode && checkEnabled) {
+                cout << "checking sortMortonCode" << endl;
+                for (int j = 0; j < min(12, nTriangles); j++) {
+                    cout << j << ": (" << h_sortedTriangleIDs[j] << ") "
+                    << h_morton[j] << endl;
+                }
+            }
+
+
+            sz_morton = nTriangles * sizeof(uint64_t);
+            sz_sortedIDs = nTriangles * sizeof(int);
+            sz_hitIDs = gridXLambda * blockX * sizeof(CollisionList);
+            sz_interceptDists = gridXLambda * blockX * sizeof(InterceptDistances);
+            //data structures used in agglomerative LBVH construction
+            HANDLE_ERROR(cudaMalloc(&d_leafNodes, nTriangles * sizeof(BVHNode)));
+            HANDLE_ERROR(cudaMalloc(&d_internalNodes, nTriangles * sizeof(BVHNode)));
+            HANDLE_ERROR(cudaMalloc(&d_morton, sz_morton));
+            HANDLE_ERROR(cudaMalloc(&d_sortedTriangleIDs, sz_sortedIDs));
+            HANDLE_ERROR(cudaMalloc(&d_hitIDs, sz_hitIDs));
+
+            HANDLE_ERROR(cudaMemcpy(d_morton, h_morton.data(), sz_morton, cudaMemcpyHostToDevice));
+            HANDLE_ERROR(cudaMemcpy(d_sortedTriangleIDs, h_sortedTriangleIDs.data(), sz_sortedIDs, cudaMemcpyHostToDevice));
+            std::vector<uint64_t>().swap(h_morton);
+            std::vector<int>().swap(h_sortedTriangleIDs);
+
+            bvhResetKernel<<<gridXt, blockX>>>(d_vertices, d_triangles,
+                d_internalNodes, d_leafNodes,
+                d_sortedTriangleIDs, nTriangles);
+            HANDLE_ERROR(cudaDeviceSynchronize());
+
+            bvhConstruct<uint64_t><<<gridXt, blockX>>>(d_internalNodes, d_leafNodes,
+                                    d_morton, nTriangles);
+            HANDLE_ERROR(cudaDeviceSynchronize());
+            CUDA_SYNCHRO_CHECK();
+
+        }
 
     void detect(float* rayFrom, float* rayTo){
 
@@ -269,16 +324,6 @@ class RSI {
 
         // BVH BUILDING CODE, maybe relies on ray data to create
 
-        //grid partitions
-        blockX = 1024,
-        gridXr = (int)ceil((float)nRays / blockX),
-        gridXt = (int)ceil((float)nTriangles / blockX),
-        gridXLambda = 16; //N_{grids}
-        if (! quietMode) {
-            cout << blockX << " threads/block, grids: {triangles: "
-                << gridXt << ", rays: " << gridXLambda << "}" << endl;
-        }
-
         //initialise arrays
         initArrayKernel<<<gridXr, blockX>>>(d_intersectTriangle, -1, nRays);
         initArrayKernel<<<gridXr, blockX>>>(d_baryT, largePosVal, nRays);
@@ -289,91 +334,7 @@ class RSI {
         rbxKernel<<<gridXr, blockX>>>(d_rayFrom, d_rayTo, d_rayBox, nRays);
         HANDLE_ERROR(cudaDeviceSynchronize());
 
-        //order triangles using Morton code
-        //- normalise surface vertices to canvas coords
-        getMinMaxExtentOfSurface<float>(h_vertices, minval, maxval, half_delta,
-                                        inv_delta, nVertices, quietMode);
-        //- convert centroid of triangles to morton code
-        createMortonCode<float, uint64_t>(h_vertices, h_triangles,
-                                        minval, half_delta, inv_delta,
-                                        h_morton, nTriangles);
-        //- sort before constructing binary radix tree
-        sortMortonCode<uint64_t>(h_morton, h_sortedTriangleIDs);
-        if (!quietMode && checkEnabled) {
-            cout << "checking sortMortonCode" << endl;
-            for (int j = 0; j < min(12, nTriangles); j++) {
-                cout << j << ": (" << h_sortedTriangleIDs[j] << ") "
-                    << h_morton[j] << endl;
-            }
-        }
-
-
-        sz_morton = nTriangles * sizeof(uint64_t);
-        sz_sortedIDs = nTriangles * sizeof(int);
-        sz_hitIDs = gridXLambda * blockX * sizeof(CollisionList);
-        sz_interceptDists = gridXLambda * blockX * sizeof(InterceptDistances);
-        //data structures used in agglomerative LBVH construction
-        HANDLE_ERROR(cudaMalloc(&d_leafNodes, nTriangles * sizeof(BVHNode)));
-        HANDLE_ERROR(cudaMalloc(&d_internalNodes, nTriangles * sizeof(BVHNode)));
-        HANDLE_ERROR(cudaMalloc(&d_morton, sz_morton));
-        HANDLE_ERROR(cudaMalloc(&d_sortedTriangleIDs, sz_sortedIDs));
-        HANDLE_ERROR(cudaMalloc(&d_hitIDs, sz_hitIDs));
-
-        HANDLE_ERROR(cudaMemcpy(d_morton, h_morton.data(), sz_morton, cudaMemcpyHostToDevice));
-        HANDLE_ERROR(cudaMemcpy(d_sortedTriangleIDs, h_sortedTriangleIDs.data(), sz_sortedIDs, cudaMemcpyHostToDevice));
-        std::vector<uint64_t>().swap(h_morton);
-        std::vector<int>().swap(h_sortedTriangleIDs);
-
-        // FIGURING OUT ISSUE WITH BVHRESET
-
-        // std::cout << "d_vertices = " << d_vertices << std::endl;
-        // std::cout << "d_sortedTriangleIDs = " << d_sortedTriangleIDs << std::endl;
-        // std::cout << "nTriangles = " << nTriangles << std::endl;
-
-
-        // END DEBUG
-
-        bvhResetKernel<<<gridXt, blockX>>>(d_vertices, d_triangles,
-                                        d_internalNodes, d_leafNodes,
-                                        d_sortedTriangleIDs, nTriangles);
-        HANDLE_ERROR(cudaDeviceSynchronize());
-
-        bvhConstruct<uint64_t><<<gridXt, blockX>>>(d_internalNodes, d_leafNodes,
-                                                d_morton, nTriangles);
-        //HANDLE_ERROR(cudaDeviceSynchronize());
-        CUDA_SYNCHRO_CHECK();
-
         // END BVH CODE
-
-
-        // Intersection detection code
-
-        // // DEBUG INTERSECT
-
-        // printf("blockX = %d\n", blockX);
-        // printf("gridXr = %d\n", gridXr);
-        // printf("gridXt = %d\n", gridXt);
-        // printf("gridXLambda = %d\n", gridXLambda);
-        
-        // printf("sz_vertices = %d\n", sz_vertices);
-        // printf("sz_triangles = %d\n", sz_triangles);
-        // printf("sz_rays = %d\n", sz_rays);
-        // printf("sz_rbox = %d\n", sz_rbox);
-        // printf("sz_id = %d\n", sz_id);
-        // printf("sz_bary = %d\n", sz_bary);
-        // printf("sz_morton = %d\n", sz_morton);
-        // printf("sz_sortedIDs = %d\n", sz_sortedIDs);
-        // printf("sz_hitIDs = %d\n", sz_hitIDs);
-        // printf("sz_interceptDists = %d\n", sz_interceptDists);
-        
-        // // Also print the first 3 elements of minval, maxval, half_delta, inv_delta
-        // printf("minval = [%f, %f, %f]\n", minval[0], minval[1], minval[2]);
-        // printf("maxval = [%f, %f, %f]\n", maxval[0], maxval[1], maxval[2]);
-        // printf("half_delta = [%f, %f, %f]\n", half_delta[0], half_delta[1], half_delta[2]);
-        // printf("inv_delta = [%f, %f, %f]\n", inv_delta[0], inv_delta[1], inv_delta[2]);
-        
-
-        // // END DEBUG INTERSECT
 
         bvhIntersectionKernel<<<gridXLambda, blockX>>>(
                     d_vertices, d_triangles, d_rayFrom, d_rayTo,
