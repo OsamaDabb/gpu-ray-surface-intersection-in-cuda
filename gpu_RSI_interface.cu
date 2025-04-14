@@ -347,8 +347,8 @@ class RSI {
         HANDLE_ERROR(cudaMemcpy(h_intersectTriangle.data(), d_intersectTriangle,
                                 sz_id, cudaMemcpyDeviceToHost));
         HANDLE_ERROR(cudaMemcpy(h_baryT.data(), d_baryT, sz_bary, cudaMemcpyDeviceToHost));
-        HANDLE_ERROR(cudaMemcpy(h_baryU.data(), d_baryU, sz_bary, cudaMemcpyDeviceToHost));
-        HANDLE_ERROR(cudaMemcpy(h_baryV.data(), d_baryV, sz_bary, cudaMemcpyDeviceToHost));
+        //HANDLE_ERROR(cudaMemcpy(h_baryU.data(), d_baryU, sz_bary, cudaMemcpyDeviceToHost));
+        //HANDLE_ERROR(cudaMemcpy(h_baryV.data(), d_baryV, sz_bary, cudaMemcpyDeviceToHost));
 
         // printf("Detected triangle ID = %d\n", h_intersectTriangle[0]);
     
