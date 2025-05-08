@@ -1,0 +1,4 @@
+gpu_ray_surface_intersect
+*.exe
+scratch/
+pycuda/
